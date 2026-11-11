@@ -15,6 +15,31 @@
 
   const estado = txt => { $('estado').textContent = txt; };
 
+  function mensajeErrorCamara(error) {
+    if (!window.isSecureContext) {
+      return 'El navegador bloquea la cámara en esta dirección. Abre la página en localhost o usa HTTPS.';
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return 'Este navegador no permite usar la cámara aquí. Prueba con una versión reciente de Chrome, Edge o Firefox.';
+    }
+    switch (error.name) {
+      case 'NotAllowedError':
+      case 'PermissionDeniedError':
+        return 'Acceso a la cámara denegado. Permite el acceso en el navegador y revisa los permisos de privacidad de Windows.';
+      case 'NotFoundError':
+      case 'DevicesNotFoundError':
+        return 'No se encontró una cámara. Conéctala o habilítala y recarga la página.';
+      case 'NotReadableError':
+      case 'TrackStartError':
+        return 'La cámara está ocupada o no se puede iniciar. Cierra otras aplicaciones que la estén usando y vuelve a intentar.';
+      case 'OverconstrainedError':
+      case 'ConstraintNotSatisfiedError':
+        return 'La cámara no admite la resolución solicitada. Prueba con otra cámara o navegador.';
+      default:
+        return `No se pudo iniciar la cámara (${error.message || error.name || 'error desconocido'}).`;
+    }
+  }
+
   async function post(url, cuerpo) {
     const r = await fetch(url, {
       method: 'POST',
@@ -29,14 +54,21 @@
   async function iniciar() {
     let flujo;
     try {
-      flujo = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+      if (!window.isSecureContext) throw new Error('contexto_inseguro');
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('api_no_disponible');
+      flujo = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false
+      });
+      video.srcObject = flujo;
+      await video.play();
     } catch (e) {
-      placeholder.textContent = 'No se pudo acceder a la cámara. Permite el acceso y recarga la página.';
+      if (flujo) flujo.getTracks().forEach(pista => pista.stop());
+      video.srcObject = null;
+      placeholder.textContent = mensajeErrorCamara(e);
       estado('Sin cámara');
       return;
     }
-    video.srcObject = flujo;
-    await video.play();
     lienzo.width = ANCHO;
     lienzo.height = Math.round(ANCHO * video.videoHeight / video.videoWidth) || 480;
 

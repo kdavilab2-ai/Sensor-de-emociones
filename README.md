@@ -106,6 +106,8 @@ python manage.py runserver
 ```
 Abre <http://127.0.0.1:8000/>: la cámara se enciende sola y la detección empieza de inmediato.
 El navegador pedirá permiso para usar la cámara (funciona en `localhost` o con HTTPS).
+Si accedes desde otro dispositivo o usando la IP de tu equipo, el navegador requiere HTTPS;
+además, permite la cámara en el navegador y en los permisos de privacidad de Windows.
 
 ## Uso
 

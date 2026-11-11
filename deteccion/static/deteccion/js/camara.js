@@ -1,15 +1,16 @@
-// Captura la webcam en el navegador, envía fotogramas al servidor Django
-// (que los procesa con OpenCV) y muestra el video anotado en tiempo real.
+// Al abrir la página se enciende la webcam automáticamente: cada fotograma se
+// envía al servidor Django (que lo procesa con OpenCV) y se muestra anotado.
 (() => {
   const $ = id => document.getElementById(id);
   const video = $('video'), salida = $('salida'), placeholder = $('placeholder');
-  const btnIniciar = $('btnIniciar'), btnDetener = $('btnDetener'), btnCaptura = $('btnCaptura');
   const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
   const lienzo = document.createElement('canvas');
   const ctx = lienzo.getContext('2d');
   const ANCHO = 640;
+  // identificador de esta pestaña: el servidor suaviza las emociones por cliente
+  const cliente = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
-  let flujo = null, activo = false, sesionId = null, guardados = 0;
+  let activo = false, sesionId = null, guardados = 0;
   let cuadros = 0, tUltimo = performance.now();
 
   const estado = txt => { $('estado').textContent = txt; };
@@ -26,10 +27,12 @@
   }
 
   async function iniciar() {
+    let flujo;
     try {
       flujo = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
     } catch (e) {
-      estado('No se pudo acceder a la cámara: ' + e.message);
+      placeholder.textContent = 'No se pudo acceder a la cámara. Permite el acceso y recarga la página.';
+      estado('Sin cámara');
       return;
     }
     video.srcObject = flujo;
@@ -37,16 +40,14 @@
     lienzo.width = ANCHO;
     lienzo.height = Math.round(ANCHO * video.videoHeight / video.videoWidth) || 480;
 
-    sesionId = null; guardados = 0; $('nGuardados').textContent = '0';
-    $('verSesion').classList.add('oculto');
-    if ($('guardar').checked) {
-      const s = await post(URLS.iniciar, { nombre: $('nombre').value });
-      sesionId = s.id;
+    try {
+      sesionId = (await post(URLS.iniciar, {})).id;
+    } catch (e) {
+      sesionId = null; // si la BD falla, la detección sigue funcionando sin guardar
     }
     activo = true;
     placeholder.style.display = 'none';
     salida.style.display = 'block';
-    btnIniciar.disabled = true; btnDetener.disabled = false; btnCaptura.disabled = false;
     estado(sesionId ? `Detectando · sesión #${sesionId}` : 'Detectando (sin guardar)');
     bucle();
   }
@@ -60,8 +61,7 @@
       ctx.restore();
       const imagen = lienzo.toDataURL('image/jpeg', 0.7);
       try {
-        const r = await post(URLS.procesar, { imagen, sesion_id: sesionId });
-        if (!activo) break;
+        const r = await post(URLS.procesar, { imagen, sesion_id: sesionId, cliente });
         if (r.imagen) salida.src = r.imagen;
         actualizarPanel(r.rostros);
         guardados += r.guardados || 0;
@@ -90,6 +90,7 @@
     const principal = $('principal');
     principal.className = 'principal' + (r ? ' emo-' + r.emocion : '');
     principal.textContent = r ? `${r.etiqueta} · ${Math.round(r.confianza * 100)}%` : 'Sin rostro';
+    $('aviso').classList.toggle('oculto', !(r && r.brillo !== null && r.brillo < 45));
     document.querySelectorAll('.barra-emo').forEach(fila => {
       const p = r ? (r.probabilidades[fila.dataset.emo] || 0) : 0;
       fila.querySelector('.relleno').style.width = (p * 100) + '%';
@@ -97,41 +98,15 @@
     });
   }
 
-  async function detener() {
+  // al cerrar o salir de la página se finaliza la sesión
+  window.addEventListener('pagehide', () => {
     activo = false;
-    if (flujo) flujo.getTracks().forEach(t => t.stop());
-    flujo = null;
-    video.srcObject = null;
-    salida.style.display = 'none'; placeholder.style.display = 'flex';
-    btnIniciar.disabled = false; btnDetener.disabled = true; btnCaptura.disabled = true;
-    $('fps').textContent = '0 FPS';
     if (sesionId) {
-      try {
-        const r = await post(URLS.finalizar.replace('ID', sesionId));
-        const enlace = $('verSesion');
-        enlace.href = r.url; enlace.classList.remove('oculto');
-        estado(`Sesión #${sesionId} finalizada · ${r.registros} registros`);
-      } catch (e) { estado('Error al finalizar: ' + e.message); }
-    } else {
-      estado('Detenido');
-    }
-  }
-
-  function capturar() {
-    if (!salida.src) return;
-    const a = document.createElement('a');
-    a.href = salida.src;
-    a.download = 'emocion_' + new Date().toISOString().replace(/[:.]/g, '-') + '.jpg';
-    a.click();
-  }
-
-  btnIniciar.addEventListener('click', iniciar);
-  btnDetener.addEventListener('click', detener);
-  btnCaptura.addEventListener('click', capturar);
-  window.addEventListener('beforeunload', () => {
-    if (sesionId && activo) {
-      navigator.sendBeacon(URLS.finalizar.replace('ID', sesionId),
-        new Blob([JSON.stringify({})], { type: 'application/json' }));
+      const datos = new FormData();
+      datos.append('csrfmiddlewaretoken', csrf); // sendBeacon no permite cabeceras
+      navigator.sendBeacon(URLS.finalizar.replace('ID', sesionId), datos);
     }
   });
+
+  iniciar();
 })();

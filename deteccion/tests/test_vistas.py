@@ -5,6 +5,7 @@ import cv2
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
+from deteccion import servicios
 from deteccion.detector import a_data_url
 from deteccion.models import RegistroEmocion, SesionDeteccion
 
@@ -52,6 +53,7 @@ class PaginasTests(TestCase):
 @override_settings(INTERVALO_REGISTRO_SEG=60)
 class ApiTests(TestCase):
     def setUp(self):
+        servicios._ultimo_guardado.clear() 
         self.detector, _ = crear_detector("felicidad")
         parche = mock.patch("deteccion.views.obtener_detector", return_value=self.detector)
         parche.start()

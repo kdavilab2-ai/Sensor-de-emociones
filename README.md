@@ -62,8 +62,8 @@ Navegador ◄── JSON { imagen anotada, rostros[] } ◄┘
 
 ### 2. Clonar el repositorio
 ```bash
-git clone https://github.com/USUARIO/emociones_web.git
-cd emociones_web
+git clone https://github.com/billy281/Sensor-de-emociones.git
+cd Sensor-de-emociones
 ```
 
 ### 3. Crear el entorno virtual e instalar dependencias
